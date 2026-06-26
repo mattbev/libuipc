@@ -42,6 +42,7 @@ class GlobalVertexManager final : public SimSystem
         SizeT                     frame() const noexcept;
         muda::BufferView<Vector3> rest_positions() const noexcept;
         muda::BufferView<Float>   thicknesses() const noexcept;
+        muda::BufferView<Float>   contact_areas() const noexcept;
         muda::BufferView<IndexT>  coindices() const noexcept;
         muda::BufferView<IndexT>  dimensions() const noexcept;
         muda::BufferView<Vector3> positions() const noexcept;
@@ -149,6 +150,13 @@ class GlobalVertexManager final : public SimSystem
     muda::CBufferView<Float> thicknesses() const noexcept;
 
     /**
+     * @brief The per-vertex rest tributary contact areas of the vertices.
+     *
+     * Used for the Bowden-Tabor area-dependent adhesion friction term.
+     */
+    muda::CBufferView<Float> contact_areas() const noexcept;
+
+    /**
      * @brief The dimension of the vertices. 
      * - 0: Codim 0D
      * - 1: Codim 1D
@@ -203,6 +211,7 @@ class GlobalVertexManager final : public SimSystem
         muda::DeviceBuffer<Vector3> rest_positions;
         muda::DeviceBuffer<Vector3> safe_positions;
         muda::DeviceBuffer<Float>   thicknesses;
+        muda::DeviceBuffer<Float>   contact_areas;
         muda::DeviceBuffer<IndexT>  contact_element_ids;
         muda::DeviceBuffer<IndexT>  subscene_element_ids;
         muda::DeviceBuffer<Vector3> displacements;

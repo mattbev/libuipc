@@ -37,6 +37,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                     Ps      = info.positions().viewer().name("Ps"),
                     prev_Ps = info.prev_positions().viewer().name("prev_Ps"),
                     thicknesses = info.thicknesses().viewer().name("thicknesses"),
+                    contact_areas = info.contact_areas().viewer().name("contact_areas"),
                     d_hats = info.d_hats().viewer().name("d_hats"),
                     eps_v  = info.eps_velocity(),
                     dt     = info.dt()] __device__(int i) mutable
@@ -51,6 +52,8 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                        auto  coeff = PT_contact_coeff(table, cids);
                        Float kt2   = coeff.kappa * dt * dt;
                        Float mu    = coeff.mu;
+                       // Bowden-Tabor adhesion: tau * tributary area of the point.
+                       Float adhesion = coeff.tau * contact_areas(PT[0]);
 
                        const auto& prev_P  = prev_Ps(PT[0]);
                        const auto& prev_T0 = prev_Ps(PT[1]);
@@ -85,7 +88,8 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                                                   P,
                                                   T0,
                                                   T1,
-                                                  T2);
+                                                  T2,
+                                                  adhesion);
                    });
 
         // Compute Edge-Edge energy
@@ -300,6 +304,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                     prev_Ps     = info.prev_positions().viewer().name("prev_Ps"),
                     rest_Ps     = info.rest_positions().viewer().name("rest_Ps"),
                     thicknesses = info.thicknesses().viewer().name("thicknesses"),
+                    contact_areas = info.contact_areas().viewer().name("contact_areas"),
                     d_hats      = info.d_hats().viewer().name("d_hats"),
                     eps_v       = info.eps_velocity(),
                     dt          = info.dt(),
@@ -332,6 +337,8 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                            auto  coeff = PT_contact_coeff(table, cids);
                            Float kt2   = coeff.kappa * dt * dt;
                            Float mu    = coeff.mu;
+                           // Bowden-Tabor adhesion: tau * tributary area of the point.
+                           Float adhesion = coeff.tau * contact_areas(PT[0]);
 
                            const auto& prev_P  = prev_Ps(PT[0]);
                            const auto& prev_T0 = prev_Ps(PT[1]);
@@ -352,7 +359,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                            {
                                PT_friction_gradient(G, kt2, d_hat, thickness, mu, eps_v * dt,
                                                     prev_P, prev_T0, prev_T1, prev_T2,
-                                                    P, T0, T1, T2);
+                                                    P, T0, T1, T2, adhesion);
                                DoubletVectorAssembler DVA{PT_Gs};
                                DVA.segment<4>(i * 4).write(PT, G);
                            }
@@ -361,7 +368,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                                Matrix12x12 H;
                                PT_friction_gradient_hessian(G, H, kt2, d_hat, thickness, mu, eps_v * dt,
                                                             prev_P, prev_T0, prev_T1, prev_T2,
-                                                            P, T0, T1, T2);
+                                                            P, T0, T1, T2, adhesion);
                                cuda::make_spd(H);
                                DoubletVectorAssembler DVA{PT_Gs};
                                DVA.segment<4>(i * 4).write(PT, G);

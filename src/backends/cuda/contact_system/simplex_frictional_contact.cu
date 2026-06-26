@@ -298,6 +298,11 @@ muda::CBufferView<Float> SimplexFrictionalContact::BaseInfo::thicknesses() const
     return m_impl->global_vertex_manager->thicknesses();
 }
 
+muda::CBufferView<Float> SimplexFrictionalContact::BaseInfo::contact_areas() const
+{
+    return m_impl->global_vertex_manager->contact_areas();
+}
+
 muda::CBufferView<IndexT> SimplexFrictionalContact::BaseInfo::contact_element_ids() const
 {
     return m_impl->global_vertex_manager->contact_element_ids();

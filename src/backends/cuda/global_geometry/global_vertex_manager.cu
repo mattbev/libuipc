@@ -63,6 +63,7 @@ void GlobalVertexManager::Impl::init()
     contact_element_ids.resize(total_count, 0);
     subscene_element_ids.resize(total_count, 0);
     thicknesses.resize(total_count, 0.0);
+    contact_areas.resize(total_count, 0.0);
     dimensions.resize(total_count, 3);  // default 3D
     displacements.resize(total_count, Vector3::Zero());
     displacement_norms.resize(total_count, 0.0);
@@ -300,6 +301,11 @@ muda::BufferView<Float> GlobalVertexManager::VertexAttributeInfo::thicknesses() 
     return m_impl->subview(m_impl->thicknesses, m_index);
 }
 
+muda::BufferView<Float> GlobalVertexManager::VertexAttributeInfo::contact_areas() const noexcept
+{
+    return m_impl->subview(m_impl->contact_areas, m_index);
+}
+
 muda::BufferView<IndexT> GlobalVertexManager::VertexAttributeInfo::coindices() const noexcept
 {
     return m_impl->subview(m_impl->coindices, m_index);
@@ -454,6 +460,11 @@ muda::CBufferView<Vector3> GlobalVertexManager::displacements() const noexcept
 muda::CBufferView<Float> GlobalVertexManager::thicknesses() const noexcept
 {
     return m_impl.thicknesses;
+}
+
+muda::CBufferView<Float> GlobalVertexManager::contact_areas() const noexcept
+{
+    return m_impl.contact_areas;
 }
 
 Float GlobalVertexManager::compute_axis_max_displacement()

@@ -111,6 +111,17 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
     auto friction_rate_view = attr_friction_rate->view();
     auto enabled_view       = attr_enabled->view();
 
+    // Optional Bowden-Tabor interfacial shear strength (tau, Pa). Absent in
+    // legacy scenes / when adhesion is unused -> defaults to 0 (pure Coulomb).
+    auto attr_tau = contact_models.find<Float>("interfacial_shear_strength");
+    std::vector<Float> tau_vals(friction_rate_view.size(), 0.0);
+    if(attr_tau)
+    {
+        auto tau_view = attr_tau->view();
+        for(SizeT i = 0; i < tau_view.size(); ++i)
+            tau_vals[i] = tau_view[i];
+    }
+
     auto N = world.scene().contact_tabular().element_count();
 
     // if no contact model is defined, then take the default one
@@ -119,14 +130,17 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
 
     auto mask_map = Eigen::Map<MaskMatrix>(h_contact_mask_tabular.data(), N, N);
 
-    h_contact_tabular.resize(
-        N * N, ContactCoeff{.kappa = resistance_view[0], .mu = friction_rate_view[0]});
+    h_contact_tabular.resize(N * N,
+                             ContactCoeff{.kappa = resistance_view[0],
+                                          .mu    = friction_rate_view[0],
+                                          .tau   = tau_vals.empty() ? 0.0 : tau_vals[0]});
 
     // set the defined contact model
+    IndexT model_i = 0;
     for(auto&& [ids, kappa, mu, is_enabled] :
         zip(topo_view, resistance_view, friction_rate_view, enabled_view))
     {
-        ContactCoeff coeff{.kappa = kappa, .mu = mu};
+        ContactCoeff coeff{.kappa = kappa, .mu = mu, .tau = tau_vals[model_i++]};
 
         auto upper                 = ids.x() * N + ids.y();
         h_contact_tabular[upper]   = coeff;

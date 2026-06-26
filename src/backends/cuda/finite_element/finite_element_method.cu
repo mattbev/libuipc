@@ -533,6 +533,7 @@ void FiniteElementMethod::Impl::_build_on_host(WorldVisitor& world)
         h_rest_positions.resize(h_positions.size());
         h_velocities.resize(h_positions.size(), Vector3::Zero());  // fill 0 for default
         h_thicknesses.resize(h_positions.size(), 0);  // fill 0 for default
+        h_contact_areas.resize(h_positions.size(), 0);  // fill 0 for default
         h_dimensions.resize(h_positions.size(), 3);   // fill 3(D) for default
         h_masses.resize(h_positions.size());
         h_vertex_contact_element_ids.resize(h_positions.size(), 0);  // fill 0 for default
@@ -722,6 +723,20 @@ To avoid this warning, please apply the transform to the positions mannally. htt
                     UIPC_ASSERT(thickness_view.size() == dst_thickness_span.size(),
                                 "thickness size mismatching");
                     std::ranges::copy(thickness_view, dst_thickness_span.begin());
+                }
+            }
+
+            {  // 5b) setup per-vertex contact area (Bowden-Tabor adhesion)
+                auto contact_area = sc->vertices().find<Float>("contact_area");
+                auto dst_contact_area_span =
+                    span{h_contact_areas}.subspan(info.vertex_offset, info.vertex_count);
+
+                if(contact_area)
+                {
+                    auto contact_area_view = contact_area->view();
+                    UIPC_ASSERT(contact_area_view.size() == dst_contact_area_span.size(),
+                                "contact_area size mismatching");
+                    std::ranges::copy(contact_area_view, dst_contact_area_span.begin());
                 }
             }
 
@@ -917,6 +932,9 @@ void FiniteElementMethod::Impl::_build_on_device()
 
     vertex_external_forces.resize(xs.size(), Vector3::Zero());
     vertex_external_force_accs.resize(xs.size(), Vector3::Zero());
+
+    contact_areas.resize(h_contact_areas.size());
+    contact_areas.view().copy_from(h_contact_areas.data());
 
     // 2) Elements
     codim_0ds.resize(h_codim_0ds.size());
