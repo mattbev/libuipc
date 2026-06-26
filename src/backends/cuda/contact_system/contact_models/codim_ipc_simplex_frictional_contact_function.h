@@ -13,13 +13,15 @@ namespace sym::codim_ipc_contact
     {
         Float kappa = 0.0;
         Float mu    = 0.0;
+        Float tau   = 0.0;
         for(int j = 1; j < 4; ++j)
         {
             ContactCoeff coeff = table(cids[0], cids[j]);
             kappa += coeff.kappa;
             mu += coeff.mu;
+            tau += coeff.tau;
         }
-        return {kappa / 3.0, mu / 3.0};
+        return {kappa / 3.0, mu / 3.0, tau / 3.0};
     }
 
     inline __device__ ContactCoeff EE_contact_coeff(const cuda_tool::CDense2D<ContactCoeff>& table,
@@ -27,6 +29,7 @@ namespace sym::codim_ipc_contact
     {
         Float kappa = 0.0;
         Float mu    = 0.0;
+        Float tau   = 0.0;
         for(int j = 0; j < 2; ++j)
         {
             for(int k = 2; k < 4; ++k)
@@ -34,9 +37,10 @@ namespace sym::codim_ipc_contact
                 ContactCoeff coeff = table(cids[j], cids[k]);
                 kappa += coeff.kappa;
                 mu += coeff.mu;
+                tau += coeff.tau;
             }
         }
-        return {kappa / 4.0, mu / 4.0};
+        return {kappa / 4.0, mu / 4.0, tau / 4.0};
     }
 
     inline __device__ ContactCoeff PE_contact_coeff(const cuda_tool::CDense2D<ContactCoeff>& table,
@@ -44,13 +48,15 @@ namespace sym::codim_ipc_contact
     {
         Float kappa = 0.0;
         Float mu    = 0.0;
+        Float tau   = 0.0;
         for(int j = 1; j < 3; ++j)
         {
             ContactCoeff coeff = table(cids[0], cids[j]);
             kappa += coeff.kappa;
             mu += coeff.mu;
+            tau += coeff.tau;
         }
-        return {kappa / 2.0, mu / 2.0};
+        return {kappa / 2.0, mu / 2.0, tau / 2.0};
     }
 
     inline __device__ ContactCoeff PP_contact_coeff(const cuda_tool::CDense2D<ContactCoeff>& table,
@@ -110,7 +116,8 @@ namespace sym::codim_ipc_contact
                                                const Vector3& P,
                                                const Vector3& T0,
                                                const Vector3& T1,
-                                               const Vector3& T2)
+                                               const Vector3& T2,
+                                               Float          adhesion = 0.0)
     {
         using namespace distance;
         using namespace friction;
@@ -140,7 +147,7 @@ namespace sym::codim_ipc_contact
             T1,
             T2);
 
-        Float E = friction_energy(mu, f, eps_vh, tan_rel_dx);
+        Float E = friction_energy(mu, f, eps_vh, tan_rel_dx, adhesion);
 
         return E;
     }
@@ -159,7 +166,8 @@ namespace sym::codim_ipc_contact
                                                         const Vector3& P,
                                                         const Vector3& T0,
                                                         const Vector3& T1,
-                                                        const Vector3& T2)
+                                                        const Vector3& T2,
+                                                        Float        adhesion = 0.0)
     {
         using namespace distance;
         using namespace friction;
@@ -192,12 +200,12 @@ namespace sym::codim_ipc_contact
         point_triangle_jacobi(basis, beta, J);
 
         Vector2 G2;
-        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx);
+        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx, adhesion);
         //apply_point_triangle_jacobi(G2, basis, beta, G);
         G = J.transpose() * G2;
 
         Matrix2x2 H2x2;
-        friction_hessian(H2x2, mu, f, eps_vh, tan_rel_dx);
+        friction_hessian(H2x2, mu, f, eps_vh, tan_rel_dx, adhesion);
         H = J.transpose() * H2x2 * J;
     }
 
@@ -214,7 +222,8 @@ namespace sym::codim_ipc_contact
                                                 const Vector3& P,
                                                 const Vector3& T0,
                                                 const Vector3& T1,
-                                                const Vector3& T2)
+                                                const Vector3& T2,
+                                                Float          adhesion = 0.0)
     {
         using namespace friction;
 
@@ -246,7 +255,7 @@ namespace sym::codim_ipc_contact
         point_triangle_jacobi(basis, beta, J);
 
         Vector2 G2;
-        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx);
+        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx, adhesion);
         G = J.transpose() * G2;
     }
 

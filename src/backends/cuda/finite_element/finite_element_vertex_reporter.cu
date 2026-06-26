@@ -57,6 +57,7 @@ void FiniteElementVertexReporter::Impl::init_attributes(VertexAttributeInfo& inf
 
     info.dimensions().copy_from(fem().h_dimensions.data());
     info.thicknesses().copy_from(fem().thicknesses);
+    info.contact_areas().copy_from(fem().contact_areas);
 
     info.body_ids().copy_from(fem().h_vertex_body_id.data());
     info.d_hats().copy_from(fem().h_vertex_d_hat.data());

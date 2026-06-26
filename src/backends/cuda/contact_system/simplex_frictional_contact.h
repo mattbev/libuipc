@@ -34,6 +34,7 @@ class SimplexFrictionalContact : public ContactReporter
         cuda_tool::CBufferView<Vector3>        prev_positions() const;
         cuda_tool::CBufferView<Vector3>        rest_positions() const;
         cuda_tool::CBufferView<Float>          thicknesses() const;
+        cuda_tool::CBufferView<Float>          contact_areas() const;
         cuda_tool::CBufferView<IndexT>         contact_element_ids() const;
         Float                                  d_hat() const;
         cuda_tool::CBufferView<Float>          d_hats() const;

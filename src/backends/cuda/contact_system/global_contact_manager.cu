@@ -361,6 +361,10 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
     auto friction_rate_view = attr_friction_rate->view();
     auto enabled_view       = attr_enabled->view();
 
+    // Optional Bowden-Tabor interfacial shear strength (tau, Pa); absent -> 0 (Coulomb).
+    auto attr_tau = contact_models.find<Float>("interfacial_shear_strength");
+    auto tau_at   = [&](SizeT i) { return attr_tau ? attr_tau->view()[i] : Float{0}; };
+
     auto N = world.scene().contact_tabular().element_count();
 
     // if no contact model is defined, then take the default one
@@ -401,7 +405,7 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
     }
 
     h_contact_tabular.resize(
-        N * N, ContactCoeff{.kappa = default_kappa, .mu = friction_rate_view[0]});
+        N * N, ContactCoeff{.kappa = default_kappa, .mu = friction_rate_view[0], .tau = tau_at(0)});
 
     // set the defined contact model
     for(SizeT i = 0; i < topo_view.size(); ++i)
@@ -429,7 +433,7 @@ void GlobalContactManager::Impl::_build_contact_tabular(WorldVisitor& world)
             kk = clamped;
         }
 
-        ContactCoeff coeff{.kappa = kk, .mu = mu};
+        ContactCoeff coeff{.kappa = kk, .mu = mu, .tau = tau_at(i)};
 
         auto upper                 = ids.x() * N + ids.y();
         h_contact_tabular[upper]   = coeff;

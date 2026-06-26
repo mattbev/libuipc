@@ -19,6 +19,7 @@ namespace
                                                 cuda_tool::CBufferView<Vector3> Ps,
                                                 cuda_tool::CBufferView<Vector3> prev_Ps,
                                                 cuda_tool::CBufferView<Float> thicknesses,
+                                                cuda_tool::CBufferView<Float> contact_areas,
                                                 cuda_tool::CBufferView<Float> d_hats,
                                                 Float eps_v,
                                                 Float dt,
@@ -40,6 +41,9 @@ namespace
         auto  coeff = PT_contact_coeff(table, cids);
         Float kt2   = coeff.kappa * dt * dt;
         Float mu    = coeff.mu;
+        // Bowden-Tabor adhesion: tau * tributary area of the point, in the
+        // same dt^2-scaled force units as lambda (computed with kappa * dt^2).
+        Float adhesion = coeff.tau * contact_areas(PT[0]) * dt * dt;
 
         const auto& prev_P  = prev_Ps(PT[0]);
         const auto& prev_T0 = prev_Ps(PT[1]);
@@ -74,7 +78,8 @@ namespace
                                    P,
                                    T0,
                                    T1,
-                                   T2);
+                                   T2,
+                                   adhesion);
     }
 
     __global__ void do_compute_energy_k2_kernel(cuda_tool::CDense2D<ContactCoeff> table,
@@ -267,6 +272,7 @@ namespace
                                        cuda_tool::CBufferView<Vector3> prev_Ps,
                                        cuda_tool::CBufferView<Vector3> rest_Ps,
                                        cuda_tool::CBufferView<Float> thicknesses,
+                                       cuda_tool::CBufferView<Float> contact_areas,
                                        cuda_tool::CBufferView<Float>    d_hats,
                                        Float                            eps_v,
                                        Float                            dt,
@@ -305,6 +311,8 @@ namespace
             auto        coeff = PT_contact_coeff(table, cids);
             Float       kt2   = coeff.kappa * dt * dt;
             Float       mu    = coeff.mu;
+            // Bowden-Tabor adhesion (see the energy kernel).
+            Float adhesion = coeff.tau * contact_areas(PT[0]) * dt * dt;
 
             const auto& prev_P  = prev_Ps(PT[0]);
             const auto& prev_T0 = prev_Ps(PT[1]);
@@ -326,7 +334,7 @@ namespace
             if constexpr(GradientOnly)
             {
                 PT_friction_gradient(
-                    G, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_T0, prev_T1, prev_T2, P, T0, T1, T2);
+                    G, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_T0, prev_T1, prev_T2, P, T0, T1, T2, adhesion);
                 DoubletVectorAssembler DVA{PT_Gs};
                 DVA.segment<4>(i * 4).write(PT, G);
             }
@@ -334,7 +342,7 @@ namespace
             {
                 Matrix12x12 H;
                 PT_friction_gradient_hessian(
-                    G, H, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_T0, prev_T1, prev_T2, P, T0, T1, T2);
+                    G, H, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_T0, prev_T1, prev_T2, P, T0, T1, T2, adhesion);
                 cuda::make_spd(H);
                 DoubletVectorAssembler DVA{PT_Gs};
                 DVA.segment<4>(i * 4).write(PT, G);
@@ -525,6 +533,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                 info.positions().viewer(),
                 info.prev_positions().viewer(),
                 info.thicknesses().viewer(),
+                info.contact_areas().viewer(),
                 info.d_hats().viewer(),
                 info.eps_velocity(),
                 info.dt(),
@@ -611,6 +620,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                 info.prev_positions().viewer(),
                 info.rest_positions().viewer(),
                 info.thicknesses().viewer(),
+                info.contact_areas().viewer(),
                 info.d_hats().viewer(),
                 info.eps_velocity(),
                 info.dt(),

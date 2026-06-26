@@ -298,6 +298,11 @@ cuda_tool::CBufferView<Float> SimplexFrictionalContact::BaseInfo::thicknesses() 
     return m_impl->global_vertex_manager->thicknesses();
 }
 
+cuda_tool::CBufferView<Float> SimplexFrictionalContact::BaseInfo::contact_areas() const
+{
+    return m_impl->global_vertex_manager->contact_areas();
+}
+
 cuda_tool::CBufferView<IndexT> SimplexFrictionalContact::BaseInfo::contact_element_ids() const
 {
     return m_impl->global_vertex_manager->contact_element_ids();

@@ -47,18 +47,24 @@ namespace sym::codim_ipc_contact
     }
 
 
-    inline __device__ Float friction_energy(Float mu, Float lambda, Float eps_vh, Vector2 tan_rel_x)
+    // `adhesion` is an additive, load-independent friction-limit term
+    // (Bowden-Tabor tau * contact_area). The friction limit is mu*lambda +
+    // adhesion; since the friction energy/gradient/hessian are all linear in
+    // this limit coefficient, adding a velocity-independent term is exact.
+    inline __device__ Float friction_energy(
+        Float mu, Float lambda, Float eps_vh, Vector2 tan_rel_x, Float adhesion = 0.0)
     {
         Float f0_val;
         f0(tan_rel_x.squaredNorm(), eps_vh, f0_val);
-        return mu * lambda * f0_val;
+        return (mu * lambda + adhesion) * f0_val;
     }
 
-    inline __device__ void friction_gradient(Vector2& G2, Float mu, Float lambda, Float eps_vh, Vector2 tan_rel_x)
+    inline __device__ void friction_gradient(
+        Vector2& G2, Float mu, Float lambda, Float eps_vh, Vector2 tan_rel_x, Float adhesion = 0.0)
     {
         Float f1_val;
         f1_div_rel_dx_norm(tan_rel_x.squaredNorm(), eps_vh, f1_val);
-        G2 = mu * lambda * f1_val * tan_rel_x;
+        G2 = (mu * lambda + adhesion) * f1_val * tan_rel_x;
     }
 
     inline __device__ void make_spd(Matrix2x2& mat)
@@ -75,8 +81,10 @@ namespace sym::codim_ipc_contact
         mat = eigen_vectors * eigen_values.asDiagonal() * eigen_vectors.transpose();
     };
 
-    inline __device__ void friction_hessian(Matrix2x2& H2x2, Float mu, Float lambda, Float eps_vh, Vector2 tan_rel_x)
+    inline __device__ void friction_hessian(
+        Matrix2x2& H2x2, Float mu, Float lambda, Float eps_vh, Vector2 tan_rel_x, Float adhesion = 0.0)
     {
+        Float limit   = mu * lambda + adhesion;
         Float sq_norm = tan_rel_x.squaredNorm();
         Float epsvh2  = eps_vh * eps_vh;
         Float f1_div_rel_dx_norm_val;
@@ -87,7 +95,7 @@ namespace sym::codim_ipc_contact
 
             // no SPD projection needed
             Vector2 ubar(-tan_rel_x[1], tan_rel_x[0]);
-            H2x2 = ubar * (mu * lambda * f1_div_rel_dx_norm_val / sq_norm)
+            H2x2 = ubar * (limit * f1_div_rel_dx_norm_val / sq_norm)
                    * ubar.transpose();
         }
         else
@@ -95,7 +103,7 @@ namespace sym::codim_ipc_contact
             if(sq_norm == 0.0)
             {
                 // no SPD projection needed
-                H2x2 = (mu * lambda * f1_div_rel_dx_norm_val) * Matrix2x2::Identity();
+                H2x2 = (limit * f1_div_rel_dx_norm_val) * Matrix2x2::Identity();
             }
             else
             {
@@ -110,7 +118,7 @@ namespace sym::codim_ipc_contact
 
                 make_spd(H2x2);
 
-                H2x2 *= mu * lambda;
+                H2x2 *= limit;
             }
         }
     }

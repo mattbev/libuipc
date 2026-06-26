@@ -41,6 +41,7 @@ class GlobalVertexManager final : public SimSystem
         SizeT                          frame() const noexcept;
         cuda_tool::BufferView<Vector3> rest_positions() const noexcept;
         cuda_tool::BufferView<Float>   thicknesses() const noexcept;
+        cuda_tool::BufferView<Float>   contact_areas() const noexcept;
         cuda_tool::BufferView<IndexT>  coindices() const noexcept;
         cuda_tool::BufferView<IndexT>  dimensions() const noexcept;
         cuda_tool::BufferView<Vector3> positions() const noexcept;
@@ -148,6 +149,13 @@ class GlobalVertexManager final : public SimSystem
     cuda_tool::CBufferView<Float> thicknesses() const noexcept;
 
     /**
+     * @brief The per-vertex rest tributary contact areas of the vertices.
+     *
+     * Used for the Bowden-Tabor area-dependent adhesion friction term.
+     */
+    cuda_tool::CBufferView<Float> contact_areas() const noexcept;
+
+    /**
      * @brief The dimension of the vertices. 
      * - 0: Codim 0D
      * - 1: Codim 1D
@@ -211,6 +219,7 @@ class GlobalVertexManager final : public SimSystem
         cuda_tool::DeviceBuffer<Vector3> rest_positions;
         cuda_tool::DeviceBuffer<Vector3> safe_positions;
         cuda_tool::DeviceBuffer<Float>   thicknesses;
+        cuda_tool::DeviceBuffer<Float>   contact_areas;
         cuda_tool::DeviceBuffer<IndexT>  contact_element_ids;
         cuda_tool::DeviceBuffer<IndexT>  subscene_element_ids;
         cuda_tool::DeviceBuffer<Vector3> displacements;
