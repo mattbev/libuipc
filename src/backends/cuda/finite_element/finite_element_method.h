@@ -290,6 +290,7 @@ class FiniteElementMethod final : public SimSystem
         vector<Vector3> h_rest_positions;
         vector<Vector3> h_velocities;
         vector<Float>   h_thicknesses;
+        vector<Float>   h_contact_areas;  // per-vertex rest tributary area (Bowden-Tabor)
         vector<IndexT>  h_dimensions;
         vector<Float>   h_masses;
 
@@ -333,6 +334,7 @@ class FiniteElementMethod final : public SimSystem
         muda::DeviceBuffer<Vector3> x_prevs;   // Positions at last frame
         muda::DeviceBuffer<Float>   masses;    // Mass
         muda::DeviceBuffer<Float>   thicknesses;  // Thickness
+        muda::DeviceBuffer<Float>   contact_areas;  // per-vertex rest tributary area
 
 
         //tex:
@@ -389,6 +391,7 @@ class FiniteElementMethod final : public SimSystem
     auto x_prevs() const noexcept { return m_impl.x_prevs.view(); }
     auto masses() const noexcept { return m_impl.masses.view(); }
     auto thicknesses() const noexcept { return m_impl.thicknesses.view(); }
+    auto contact_areas() const noexcept { return m_impl.contact_areas.view(); }
     auto rest_volumes() const noexcept { return m_impl.rest_volumes.view(); }
     auto rest_areas() const noexcept { return m_impl.rest_areas.view(); }
     auto rest_lengths() const noexcept { return m_impl.rest_lengths.view(); }

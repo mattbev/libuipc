@@ -41,6 +41,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                     Ps      = info.positions().viewer().name("Ps"),
                     prev_Ps = info.prev_positions().viewer().name("prev_Ps"),
                     thicknesses = info.thicknesses().viewer().name("thicknesses"),
+                    contact_areas = info.contact_areas().viewer().name("contact_areas"),
                     d_hats = info.d_hats().viewer().name("d_hats"),
                     eps_v  = info.eps_velocity(),
                     dt     = info.dt()] __device__(int i) mutable
@@ -75,6 +76,10 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                            d_hats(PT[0]), d_hats(PT[1]), d_hats(PT[2]), d_hats(PT[3]));
 
 
+                       // Bowden-Tabor area-dependent adhesion: tau * tributary
+                       // area of the contacting point vertex.
+                       Float adhesion = coeff.tau * contact_areas(PT[0]);
+
                        Es(i) = PT_friction_energy(kt2,
                                                   d_hat,
                                                   thickness,
@@ -89,7 +94,8 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                                                   P,
                                                   T0,
                                                   T1,
-                                                  T2);
+                                                  T2,
+                                                  adhesion);
                    });
 
         // Compute Edge-Edge energy
@@ -292,6 +298,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                     Ps      = info.positions().viewer().name("Ps"),
                     prev_Ps = info.prev_positions().viewer().name("prev_Ps"),
                     thicknesses = info.thicknesses().viewer().name("thicknesses"),
+                    contact_areas = info.contact_areas().viewer().name("contact_areas"),
                     d_hats = info.d_hats().viewer().name("d_hats"),
                     eps_v  = info.eps_velocity(),
                     dt     = info.dt()] __device__(int i) mutable
@@ -329,6 +336,10 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                        Vector12    G;
                        Matrix12x12 H;
 
+                       // Bowden-Tabor area-dependent adhesion: tau * tributary
+                       // area of the contacting point vertex.
+                       Float adhesion = coeff.tau * contact_areas(PT[0]);
+
                        PT_friction_gradient_hessian(G,
                                                     H,
                                                     kt2,
@@ -345,7 +356,8 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                                                     P,
                                                     T0,
                                                     T1,
-                                                    T2);
+                                                    T2,
+                                                    adhesion);
 
                        cuda::make_spd(H);
 
