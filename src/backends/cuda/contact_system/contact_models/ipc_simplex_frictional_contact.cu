@@ -52,8 +52,9 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                        auto  coeff = PT_contact_coeff(table, cids);
                        Float kt2   = coeff.kappa * dt * dt;
                        Float mu    = coeff.mu;
-                       // Bowden-Tabor adhesion: tau * tributary area of the point.
-                       Float adhesion = coeff.tau * contact_areas(PT[0]);
+                       // Bowden-Tabor adhesion: tau * tributary area of the point, in the
+                       // same dt^2-scaled force units as lambda (computed with kappa * dt^2).
+                       Float adhesion = coeff.tau * contact_areas(PT[0]) * dt * dt;
 
                        const auto& prev_P  = prev_Ps(PT[0]);
                        const auto& prev_T0 = prev_Ps(PT[1]);
@@ -337,8 +338,9 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                            auto  coeff = PT_contact_coeff(table, cids);
                            Float kt2   = coeff.kappa * dt * dt;
                            Float mu    = coeff.mu;
-                           // Bowden-Tabor adhesion: tau * tributary area of the point.
-                           Float adhesion = coeff.tau * contact_areas(PT[0]);
+                           // Bowden-Tabor adhesion: tau * tributary area of the point, in the
+                           // same dt^2-scaled force units as lambda (computed with kappa * dt^2).
+                           Float adhesion = coeff.tau * contact_areas(PT[0]) * dt * dt;
 
                            const auto& prev_P  = prev_Ps(PT[0]);
                            const auto& prev_T0 = prev_Ps(PT[1]);
