@@ -12,6 +12,18 @@ namespace uipc::backend::cuda
 {
 namespace
 {
+    // Bowden-Tabor adhesion area of a point-triangle pair. Both bodies' points sample
+    // the contact, so the point's tributary area aP is weighted by the other side's
+    // share, aT / (aP + aT) (aT: the triangle's mean vertex area); the two sides then
+    // sum to the contact area for any mesh densities. A side without areas leaves aP
+    // unweighted.
+    __device__ Float PT_adhesion_area(cuda_tool::CBufferView<Float> areas, const Vector4i& PT)
+    {
+        Float aP = areas(PT[0]);
+        Float aT = (areas(PT[1]) + areas(PT[2]) + areas(PT[3])) / 3;
+        return aT > 0 ? aP * aT / (aP + aT) : aP;
+    }
+
     __global__ void do_compute_energy_k1_kernel(cuda_tool::CDense2D<ContactCoeff> table,
                                                 cuda_tool::CBufferView<IndexT> contact_ids,
                                                 cuda_tool::CBufferView<Vector4i> PTs,
@@ -41,9 +53,9 @@ namespace
         auto  coeff = PT_contact_coeff(table, cids);
         Float kt2   = coeff.kappa * dt * dt;
         Float mu    = coeff.mu;
-        // Bowden-Tabor adhesion: tau * tributary area of the point, in the
-        // same dt^2-scaled force units as lambda (computed with kappa * dt^2).
-        Float adhesion = coeff.tau * contact_areas(PT[0]) * dt * dt;
+        // Bowden-Tabor adhesion tau * area, in the same dt^2-scaled force units
+        // as lambda (computed with kappa * dt^2).
+        Float adhesion = coeff.tau * PT_adhesion_area(contact_areas, PT) * dt * dt;
 
         const auto& prev_P  = prev_Ps(PT[0]);
         const auto& prev_T0 = prev_Ps(PT[1]);
@@ -312,7 +324,7 @@ namespace
             Float       kt2   = coeff.kappa * dt * dt;
             Float       mu    = coeff.mu;
             // Bowden-Tabor adhesion (see the energy kernel).
-            Float adhesion = coeff.tau * contact_areas(PT[0]) * dt * dt;
+            Float adhesion = coeff.tau * PT_adhesion_area(contact_areas, PT) * dt * dt;
 
             const auto& prev_P  = prev_Ps(PT[0]);
             const auto& prev_T0 = prev_Ps(PT[1]);
