@@ -6,22 +6,60 @@
 #include <utils/matrix_assembler.h>
 #include <utils/primitive_d_hat.h>
 #include <pipeline/ipc_pipeline_flag.h>
+#include <cuda_tool/atomic.h>
 
 
 namespace uipc::backend::cuda
 {
 namespace
 {
-    // Bowden-Tabor adhesion area of a point-triangle pair. Both bodies' points sample
-    // the contact, so the point's tributary area aP is weighted by the other side's
-    // share, aT / (aP + aT) (aT: the triangle's mean vertex area); the two sides then
-    // sum to the contact area for any mesh densities. A side without areas leaves aP
-    // unweighted.
-    __device__ Float PT_adhesion_area(cuda_tool::CBufferView<Float> areas, const Vector4i& PT)
+    // Bowden-Tabor adhesion (tau * area) of one of a point's pairs, in the dt^2-scaled
+    // force units of lambda (computed with kappa * dt^2). Both bodies' points sample the
+    // contact, so the point's tributary area aP is weighted by the other side's share,
+    // aO / (aP + aO) (aO: the mean vertex area of the triangle, edge or point it faces);
+    // the sides then sum to the contact area for any mesh densities (a side without
+    // areas leaves aP unweighted). A point near an edge or a vertex of the other surface
+    // has several pairs (PT, PE, PP); they share its area equally.
+    struct Adhesion
     {
-        Float aP = areas(PT[0]);
-        Float aT = (areas(PT[1]) + areas(PT[2]) + areas(PT[3])) / 3;
-        return aT > 0 ? aP * aT / (aP + aT) : aP;
+        cuda_tool::CBufferView<Float>  areas;
+        cuda_tool::CBufferView<IndexT> pairs;  // each point's PT, PE and PP pairs
+        Float                          dt;
+
+        __device__ Float operator()(Float tau, IndexT P, Float aO) const
+        {
+            Float aP = areas(P);
+            Float a  = aO > 0 ? aP * aO / (aP + aO) : aP;
+            return tau * a / max(pairs(P), IndexT(1)) * dt * dt;
+        }
+        __device__ Float operator()(Float tau, const Vector4i& PT) const
+        {
+            return (*this)(tau, PT[0], (areas(PT[1]) + areas(PT[2]) + areas(PT[3])) / 3);
+        }
+        __device__ Float operator()(Float tau, const Vector3i& PE) const
+        {
+            return (*this)(tau, PE[0], (areas(PE[1]) + areas(PE[2])) / 2);
+        }
+        __device__ Float operator()(Float tau, const Vector2i& PP) const
+        {
+            return (*this)(tau, PP[0], areas(PP[1]));
+        }
+    };
+
+    __global__ void count_point_pairs_kernel(cuda_tool::CBufferView<Vector4i> PTs,
+                                             cuda_tool::CBufferView<Vector3i> PEs,
+                                             cuda_tool::CBufferView<Vector2i> PPs,
+                                             cuda_tool::BufferView<IndexT>    pairs,
+                                             int                              n)
+    {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if(i >= n)
+            return;
+        int    n_pt = PTs.size(), n_pe = PEs.size();
+        IndexT P    = i < n_pt        ? PTs(i)[0] :
+                      i < n_pt + n_pe ? PEs(i - n_pt)[0] :
+                                        PPs(i - n_pt - n_pe)[0];
+        cuda_tool::atomic_add(&pairs(P), IndexT(1));
     }
 
     __global__ void do_compute_energy_k1_kernel(cuda_tool::CDense2D<ContactCoeff> table,
@@ -31,7 +69,7 @@ namespace
                                                 cuda_tool::CBufferView<Vector3> Ps,
                                                 cuda_tool::CBufferView<Vector3> prev_Ps,
                                                 cuda_tool::CBufferView<Float> thicknesses,
-                                                cuda_tool::CBufferView<Float> contact_areas,
+                                                Adhesion adh,
                                                 cuda_tool::CBufferView<Float> d_hats,
                                                 Float eps_v,
                                                 Float dt,
@@ -53,9 +91,7 @@ namespace
         auto  coeff = PT_contact_coeff(table, cids);
         Float kt2   = coeff.kappa * dt * dt;
         Float mu    = coeff.mu;
-        // Bowden-Tabor adhesion tau * area, in the same dt^2-scaled force units
-        // as lambda (computed with kappa * dt^2).
-        Float adhesion = coeff.tau * PT_adhesion_area(contact_areas, PT) * dt * dt;
+        Float adhesion = adh(coeff.tau, PT);
 
         const auto& prev_P  = prev_Ps(PT[0]);
         const auto& prev_T0 = prev_Ps(PT[1]);
@@ -182,6 +218,7 @@ namespace
                                                 cuda_tool::CBufferView<Vector3> Ps,
                                                 cuda_tool::CBufferView<Vector3> prev_Ps,
                                                 cuda_tool::CBufferView<Float> thicknesses,
+                                                Adhesion adh,
                                                 cuda_tool::CBufferView<Float> d_hats,
                                                 Float eps_v,
                                                 Float dt,
@@ -200,6 +237,7 @@ namespace
         auto  coeff = PE_contact_coeff(table, cids);
         Float kt2   = coeff.kappa * dt * dt;
         Float mu    = coeff.mu;
+        Float adhesion = adh(coeff.tau, PE);
 
         const Vector3& prev_P  = prev_Ps(PE[0]);
         const Vector3& prev_E0 = prev_Ps(PE[1]);
@@ -226,7 +264,8 @@ namespace
                                    // current positions
                                    P,
                                    E0,
-                                   E1);
+                                   E1,
+                                   adhesion);
     }
 
     __global__ void do_compute_energy_k4_kernel(cuda_tool::CDense2D<ContactCoeff> table,
@@ -236,6 +275,7 @@ namespace
                                                 cuda_tool::CBufferView<Vector3> Ps,
                                                 cuda_tool::CBufferView<Vector3> prev_Ps,
                                                 cuda_tool::CBufferView<Float> thicknesses,
+                                                Adhesion adh,
                                                 cuda_tool::CBufferView<Float> d_hats,
                                                 Float eps_v,
                                                 Float dt,
@@ -253,6 +293,7 @@ namespace
         auto     coeff = PP_contact_coeff(table, cids);
         Float    kt2   = coeff.kappa * dt * dt;
         Float    mu    = coeff.mu;
+        Float    adhesion = adh(coeff.tau, PP);
 
         const Vector3& prev_P0 = prev_Ps(PP[0]);
         const Vector3& prev_P1 = prev_Ps(PP[1]);
@@ -274,7 +315,8 @@ namespace
                                    prev_P1,
                                    // current positions
                                    P0,
-                                   P1);
+                                   P1,
+                                   adhesion);
     }
 
     template <bool GradientOnly>
@@ -284,7 +326,7 @@ namespace
                                        cuda_tool::CBufferView<Vector3> prev_Ps,
                                        cuda_tool::CBufferView<Vector3> rest_Ps,
                                        cuda_tool::CBufferView<Float> thicknesses,
-                                       cuda_tool::CBufferView<Float> contact_areas,
+                                       Adhesion adh,
                                        cuda_tool::CBufferView<Float>    d_hats,
                                        Float                            eps_v,
                                        Float                            dt,
@@ -323,8 +365,7 @@ namespace
             auto        coeff = PT_contact_coeff(table, cids);
             Float       kt2   = coeff.kappa * dt * dt;
             Float       mu    = coeff.mu;
-            // Bowden-Tabor adhesion (see the energy kernel).
-            Float adhesion = coeff.tau * PT_adhesion_area(contact_areas, PT) * dt * dt;
+            Float adhesion = adh(coeff.tau, PT);
 
             const auto& prev_P  = prev_Ps(PT[0]);
             const auto& prev_T0 = prev_Ps(PT[1]);
@@ -443,6 +484,7 @@ namespace
             auto  coeff = PE_contact_coeff(table, cids);
             Float kt2   = coeff.kappa * dt * dt;
             Float mu    = coeff.mu;
+            Float adhesion = adh(coeff.tau, PE);
 
             const Vector3& prev_P  = prev_Ps(PE[0]);
             const Vector3& prev_E0 = prev_Ps(PE[1]);
@@ -459,7 +501,7 @@ namespace
             if constexpr(GradientOnly)
             {
                 PE_friction_gradient(
-                    G, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_E0, prev_E1, P, E0, E1);
+                    G, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_E0, prev_E1, P, E0, E1, adhesion);
                 DoubletVectorAssembler DVA{PE_Gs};
                 DVA.segment<3>(i * 3).write(PE, G);
             }
@@ -467,7 +509,7 @@ namespace
             {
                 Matrix9x9 H;
                 PE_friction_gradient_hessian(
-                    G, H, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_E0, prev_E1, P, E0, E1);
+                    G, H, kt2, d_hat, thickness, mu, eps_v * dt, prev_P, prev_E0, prev_E1, P, E0, E1, adhesion);
                 cuda::make_spd(H);
                 DoubletVectorAssembler DVA{PE_Gs};
                 DVA.segment<3>(i * 3).write(PE, G);
@@ -485,6 +527,7 @@ namespace
             auto        coeff = PP_contact_coeff(table, cids);
             Float       kt2   = coeff.kappa * dt * dt;
             Float       mu    = coeff.mu;
+            Float       adhesion = adh(coeff.tau, PP);
 
             const Vector3& prev_P0 = prev_Ps(PP[0]);
             const Vector3& prev_P1 = prev_Ps(PP[1]);
@@ -498,7 +541,7 @@ namespace
             if constexpr(GradientOnly)
             {
                 PP_friction_gradient(
-                    G, kt2, d_hat, thickness, mu, eps_v * dt, prev_P0, prev_P1, P0, P1);
+                    G, kt2, d_hat, thickness, mu, eps_v * dt, prev_P0, prev_P1, P0, P1, adhesion);
                 DoubletVectorAssembler DVA{PP_Gs};
                 DVA.segment<2>(i * 2).write(PP, G);
             }
@@ -506,7 +549,7 @@ namespace
             {
                 Matrix6x6 H;
                 PP_friction_gradient_hessian(
-                    G, H, kt2, d_hat, thickness, mu, eps_v * dt, prev_P0, prev_P1, P0, P1);
+                    G, H, kt2, d_hat, thickness, mu, eps_v * dt, prev_P0, prev_P1, P0, P1, adhesion);
                 cuda::make_spd(H);
                 DoubletVectorAssembler DVA{PP_Gs};
                 DVA.segment<2>(i * 2).write(PP, G);
@@ -529,10 +572,30 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
         require<IPCPipelineFlag>();
     }
 
+    cuda_tool::DeviceBuffer<IndexT> m_pairs;
+
+    // Each point's PT, PE and PP friction pairs (they share its adhesion).
+    Adhesion adhesion(BaseInfo& info)
+    {
+        m_pairs.resize(info.contact_areas().size());
+        m_pairs.fill(0);
+        int n = (int)(info.friction_PTs().size() + info.friction_PEs().size()
+                      + info.friction_PPs().size());
+        if(n > 0)
+            count_point_pairs_kernel<<<cuda_tool::best_grid_dim(n, count_point_pairs_kernel), cuda_tool::best_block_dim(count_point_pairs_kernel), 0, nullptr>>>(
+                info.friction_PTs().viewer(),
+                info.friction_PEs().viewer(),
+                info.friction_PPs().viewer(),
+                m_pairs.view(),
+                n);
+        return Adhesion{info.contact_areas().viewer(), m_pairs.cview(), info.dt()};
+    }
+
     virtual void do_compute_energy(EnergyInfo& info) override
     {
         using namespace cuda_tool;
         using namespace sym::codim_ipc_contact;
+        Adhesion adh = adhesion(info);
 
         // Compute Point-Triangle energy
         auto PT_count = info.friction_PTs().size();
@@ -545,7 +608,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                 info.positions().viewer(),
                 info.prev_positions().viewer(),
                 info.thicknesses().viewer(),
-                info.contact_areas().viewer(),
+                adh,
                 info.d_hats().viewer(),
                 info.eps_velocity(),
                 info.dt(),
@@ -579,6 +642,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                 info.positions().viewer(),
                 info.prev_positions().viewer(),
                 info.thicknesses().viewer(),
+                adh,
                 info.d_hats().viewer(),
                 info.eps_velocity(),
                 info.dt(),
@@ -595,6 +659,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                 info.positions().viewer(),
                 info.prev_positions().viewer(),
                 info.thicknesses().viewer(),
+                adh,
                 info.d_hats().viewer(),
                 info.eps_velocity(),
                 info.dt(),
@@ -614,6 +679,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
 
         if(total == 0)
             return;
+        Adhesion adh = adhesion(info);
 
         IndexT ee_offset = pt_count;
         IndexT pe_offset = ee_offset + ee_count;
@@ -632,7 +698,7 @@ class IPCSimplexFrictionalContact final : public SimplexFrictionalContact
                 info.prev_positions().viewer(),
                 info.rest_positions().viewer(),
                 info.thicknesses().viewer(),
-                info.contact_areas().viewer(),
+                adh,
                 info.d_hats().viewer(),
                 info.eps_velocity(),
                 info.dt(),

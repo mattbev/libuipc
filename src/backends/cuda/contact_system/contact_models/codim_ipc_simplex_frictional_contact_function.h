@@ -495,7 +495,8 @@ namespace sym::codim_ipc_contact
                                                const Vector3& prev_E1,
                                                const Vector3& P,
                                                const Vector3& E0,
-                                               const Vector3& E1)
+                                               const Vector3& E1,
+                                               Float          adhesion = 0.0)
     {
         using namespace friction;
 
@@ -521,7 +522,7 @@ namespace sym::codim_ipc_contact
             E0,
             E1);
 
-        Float E = friction_energy(mu, f, eps_vh, tan_rel_dx);
+        Float E = friction_energy(mu, f, eps_vh, tan_rel_dx, adhesion);
 
         return E;
     }
@@ -538,7 +539,8 @@ namespace sym::codim_ipc_contact
                                                         const Vector3& prev_E1,
                                                         const Vector3& P,
                                                         const Vector3& E0,
-                                                        const Vector3& E1)
+                                                        const Vector3& E1,
+                                                        Float          adhesion = 0.0)
     {
         using namespace distance;
         using namespace friction;
@@ -569,12 +571,12 @@ namespace sym::codim_ipc_contact
         point_edge_jacobi(basis, eta, J);
 
         Vector2 G2;
-        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx);
+        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx, adhesion);
         //apply_point_edge_jacobi(G2, basis, eta, G);
         G = J.transpose() * G2;
 
         Matrix2x2 H2x2;
-        friction_hessian(H2x2, mu, f, eps_vh, tan_rel_dx);
+        friction_hessian(H2x2, mu, f, eps_vh, tan_rel_dx, adhesion);
         H = J.transpose() * H2x2 * J;
     }
 
@@ -589,7 +591,8 @@ namespace sym::codim_ipc_contact
                                                 const Vector3& prev_E1,
                                                 const Vector3& P,
                                                 const Vector3& E0,
-                                                const Vector3& E1)
+                                                const Vector3& E1,
+                                                Float          adhesion = 0.0)
     {
         using namespace friction;
 
@@ -619,7 +622,7 @@ namespace sym::codim_ipc_contact
         point_edge_jacobi(basis, eta, J);
 
         Vector2 G2;
-        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx);
+        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx, adhesion);
         G = J.transpose() * G2;
     }
 
@@ -663,7 +666,8 @@ namespace sym::codim_ipc_contact
                                                const Vector3& prev_P0,
                                                const Vector3& prev_P1,
                                                const Vector3& P0,
-                                               const Vector3& P1)
+                                               const Vector3& P1,
+                                               Float          adhesion = 0.0)
     {
         using namespace distance;
         using namespace friction;
@@ -686,7 +690,7 @@ namespace sym::codim_ipc_contact
             P0,
             P1);
 
-        Float E = friction_energy(mu, f, eps_vh, tan_rel_dx);
+        Float E = friction_energy(mu, f, eps_vh, tan_rel_dx, adhesion);
 
         return E;
     }
@@ -701,7 +705,8 @@ namespace sym::codim_ipc_contact
                                                         const Vector3& prev_P0,
                                                         const Vector3& prev_P1,
                                                         const Vector3& P0,
-                                                        const Vector3& P1)
+                                                        const Vector3& P1,
+                                                        Float          adhesion = 0.0)
     {
         using namespace distance;
         using namespace friction;
@@ -728,12 +733,12 @@ namespace sym::codim_ipc_contact
         point_point_jacobi(basis, J);
 
         Vector2 G2;
-        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx);
+        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx, adhesion);
         //apply_point_point_jacobi(G2, basis, G);
         G = J.transpose() * G2;
 
         Matrix2x2 H2x2;
-        friction_hessian(H2x2, mu, f, eps_vh, tan_rel_dx);
+        friction_hessian(H2x2, mu, f, eps_vh, tan_rel_dx, adhesion);
         H = J.transpose() * H2x2 * J;
     }
 
@@ -746,7 +751,8 @@ namespace sym::codim_ipc_contact
                                                 const Vector3& prev_P0,
                                                 const Vector3& prev_P1,
                                                 const Vector3& P0,
-                                                const Vector3& P1)
+                                                const Vector3& P1,
+                                                Float          adhesion = 0.0)
     {
         using namespace friction;
 
@@ -772,7 +778,7 @@ namespace sym::codim_ipc_contact
         point_point_jacobi(basis, J);
 
         Vector2 G2;
-        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx);
+        friction_gradient(G2, mu, f, eps_vh, tan_rel_dx, adhesion);
         G = J.transpose() * G2;
     }
 
